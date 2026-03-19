@@ -6,7 +6,7 @@ function env:GetSpecializationVisual(specID) specID = specID or CPAPI.GetSpecial
     if atlas and C_Texture.GetAtlasInfo(atlas) then
         return atlas, true;
     end
-    return CPAPI.GetAsset([[Art\Background\%s]]):format(CPAPI.GetClassFile()), false;
+    return CPAPI.GetAsset([[Art\Background\%s]], CPAPI.GetClassFile()), false;
 end
 
 env.SpecializationVisuals = {

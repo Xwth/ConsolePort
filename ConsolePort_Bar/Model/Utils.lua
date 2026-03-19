@@ -273,10 +273,7 @@ function env:GetColorGradient(r, g, b, a, i, invert)
 	--[[ maxColor    ]] invert and minColor or maxColor;
 end
 
-function env.GetAsset(asset, arg1, ...)
-	return [[Interface\AddOns\ConsolePort_Bar\Assets\]]
-	..(arg1 and asset:format(arg1, ...) or asset);
-end
+env.GetAsset = CPAPI.MakeAssetGetter('ConsolePort_Bar')
 
 ---------------------------------------------------------------
 -- Utility functions

@@ -1,3 +1,4 @@
+local format = string.format;
 local _, Data, env = CPAPI.LinkEnv(...)
 
 ---------------------------------------------------------------
@@ -88,7 +89,7 @@ ConsolePort:AddVariables({
 ---------------------------------------------------------------
 -- Default data
 ---------------------------------------------------------------
-function _(t) return ([[|TInterface\%s:0|t]]):format(t) end;
+local function icon(t) return format('|TInterface\\%s:0|t', t) end;
 
 env.DefaultLayout = {
 	{
@@ -118,7 +119,7 @@ env.DefaultLayout = {
 	{
 		{"q", "Q", "/", "½"},
 		{"r", "R", "(", "["},
-		{"s", "S", "\\", "\|"},
+		{"s", "S", "\\", "|"},
 		{"t", "T", ")", "]"},
 	};
 	{
@@ -149,29 +150,29 @@ env.Cmd = {
 };
 
 env.DefaultMarkers = {
-	['{rt1}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_1]];
-	['{rt2}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_2]];
-	['{rt3}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_3]];
-	['{rt4}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_4]];
-	['{rt5}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_5]];
-	['{rt6}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_6]];
-	['{rt7}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_7]];
-	['{rt8}']          = _ [[TARGETINGFRAME\UI-RaidTargetingIcon_8]];
+	['{rt1}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_1]];
+	['{rt2}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_2]];
+	['{rt3}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_3]];
+	['{rt4}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_4]];
+	['{rt5}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_5]];
+	['{rt6}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_6]];
+	['{rt7}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_7]];
+	['{rt8}']          = icon [[TARGETINGFRAME\UI-RaidTargetingIcon_8]];
 
-	[env.Cmd.Space]    = _ [[AddOns\ConsolePort_Keyboard\Assets\IconSpace.tga]];
-	[env.Cmd.Erase]    = _ [[AddOns\ConsolePort_Keyboard\Assets\IconEraser.tga]];
-	[env.Cmd.Enter]    = _ [[RAIDFRAME\ReadyCheck-Ready]];
-	[env.Cmd.Escape]   = _ [[RAIDFRAME\ReadyCheck-NotReady]];
+	[env.Cmd.Space]    = icon [[AddOns\ConsolePort_Keyboard\Assets\IconSpace.tga]];
+	[env.Cmd.Erase]    = icon [[AddOns\ConsolePort_Keyboard\Assets\IconEraser.tga]];
+	[env.Cmd.Enter]    = icon [[RAIDFRAME\ReadyCheck-Ready]];
+	[env.Cmd.Escape]   = icon [[RAIDFRAME\ReadyCheck-NotReady]];
 
-	['/rw ']           = _ [[DialogFrame\UI-Dialog-Icon-AlertNew]];
-	['/raid ']         = _ [[Scenarios\ScenarioIcon-Boss]];
-	['/readycheck ']   = _ [[RAIDFRAME\ReadyCheck-Waiting]];
-	['/attacktarget '] = _ [[CURSOR\Attack]];
+	['/rw ']           = icon [[DialogFrame\UI-Dialog-Icon-AlertNew]];
+	['/raid ']         = icon [[Scenarios\ScenarioIcon-Boss]];
+	['/readycheck ']   = icon [[RAIDFRAME\ReadyCheck-Waiting]];
+	['/attacktarget '] = icon [[CURSOR\Attack]];
 
-	['%T ']            = _ [[MINIMAP\TRACKING\Target]];
-	['%T']             = _ [[MINIMAP\TRACKING\Target]];
-	['%F ']            = _ [[MINIMAP\TRACKING\Focus]];
-	['%F']             = _ [[MINIMAP\TRACKING\Focus]];
+	['%T ']            = icon [[MINIMAP\TRACKING\Target]];
+	['%T']             = icon [[MINIMAP\TRACKING\Target]];
+	['%F ']            = icon [[MINIMAP\TRACKING\Focus]];
+	['%F']             = icon [[MINIMAP\TRACKING\Focus]];
 
 	['/s ']            = '/s';
 	['/p ']            = '/p';

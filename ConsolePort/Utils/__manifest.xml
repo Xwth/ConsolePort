@@ -3,6 +3,11 @@
 	<Script file="Database.lua"/>
 	<Script file="Utils.lua"/>
 	<Script file="Const.lua"/>
+	<!-- Compat shims: Shared first, then version-specific -->
+	<Script file="Compat\Shared.lua"/>
+	<Script file="Compat\Retail.lua"/>
+	<Script file="Compat\Classic.lua"/>
+	<!-- db-dependent wrappers -->
 	<Script file="Wrapper.lua"/>
 	<Script file="Assets.lua"/>
 	<Script file="Color.lua"/>

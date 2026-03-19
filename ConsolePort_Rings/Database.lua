@@ -1,4 +1,5 @@
 local _, Data, env, db, name = CPAPI.LinkEnv(...);
+local GetBarAsset = CPAPI.MakeAssetGetter('ConsolePort_Bar');
 ---------------------------------------------------------------
 LibStub('RelaTable')(name, env);
 ---------------------------------------------------------------
@@ -151,7 +152,7 @@ function env:GetSetIcon(setID)
 		local icon = self.Frame:GetSetIcon(setID)
 		if icon then return icon end;
 	end
-	return [[Interface\AddOns\ConsolePort_Bar\Assets\Textures\Icons\Ring.png]];
+	return GetBarAsset([[Textures\Icons\Ring.png]]);
 end
 
 function env:SetIconForSet(setID, icon)

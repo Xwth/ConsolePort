@@ -12,6 +12,7 @@ local InputMixin, InputAPI = {}, CPAPI.CreateEventHandler({'Frame', '$parentInpu
 }, {
 	Widgets = {};
 });
+---@cast InputAPI InputAPI
 ---------------------------------------------------------------
 db:Register('Input', InputAPI)
 RegisterStateDriver(InputAPI, 'combat', '[combat] true; nil')
@@ -20,6 +21,9 @@ InputAPI:SetAttribute('_onstate-combat', [[
 ]])
 ---------------------------------------------------------------
 
+---@param id string
+---@param owner any
+---@return InputMixin
 function InputAPI:GetWidget(id, owner) id = tostring(id):upper();
 	assert(not InCombatLockdown(), 'Attempted to get input widget in combat.')
 	local widget = self.Widgets[id];
@@ -165,6 +169,8 @@ end
 ---------------------------------------------------------------
 -- InputMixin override handler, supports 2 layers of overrides
 ---------------------------------------------------------------
+---@param data OverrideData
+---@return InputMixin
 function InputMixin:SetOverride(data)
 	self[data.isPriority and 1 or 2] = data
 	if data.attributes then
@@ -197,6 +203,7 @@ function InputMixin:GetOverride(isPriority)
 	return self[2];
 end
 
+---@param owner? any
 function InputMixin:ClearOverride(owner)
 	if owner then
 		local i = self:HasOwner(owner)

@@ -49,6 +49,8 @@ local C_GamePad, GamepadMixin, GamepadAPI = C_GamePad, {}, CPAPI.CreateEventHand
 	};
 });
 ---------------------------------------------------------------
+---@cast GamepadAPI GamepadAPI
+---@cast GamepadMixin GamepadMixin
 db:Register('Icons', {})
 db:Register('Gamepad', GamepadAPI)
 db:Save('Gamepad/Template/Gamepads', 'ConsolePortDevices')
@@ -56,6 +58,8 @@ db:Save('Gamepad/Template/Gamepads', 'ConsolePortDevices')
 ---------------------------------------------------------------
 -- API
 ---------------------------------------------------------------
+---@param data GamepadDevice
+---@param metaData? table
 function GamepadAPI:AddGamepad(data, metaData)
 	self.Template.Metadata[data.Name] = metaData or {};
 	self.Template.Polyfill[data.Name] = data;
@@ -442,6 +446,7 @@ end
 ---------------------------------------------------------------
 -- Data: bindings
 ---------------------------------------------------------------
+---@return table<string, string>
 function GamepadAPI:GetModifiersHeld()
 	-- NOTE: uses input state instead of Blizzard API,
 	-- to get reliable results in things like click wrappers,
@@ -474,6 +479,8 @@ function GamepadAPI:GetModifierHeld(modifier)
 	return modifier and self:GetModifiersHeld()[modifier] ~= nil;
 end
 
+---@param getInactive? boolean
+---@return table<ButtonID, table<ModifierStr, BindingID>>
 function GamepadAPI:GetBindings(getInactive)
 	local btns = self.Index.Button.Binding;
 	local mods = self.Index.Modifier.Active;
@@ -782,6 +789,10 @@ function GamepadMixin:GetIconForButton(button, style)
 	return GamepadAPI:GetIconPath('ALL_MISSING', style)
 end
 
+---@param button ButtonID
+---@param prompt string
+---@param style? number
+---@return string|nil
 function GamepadMixin:GetTooltipButtonPrompt(button, prompt, style)
 	local color = self.Colors[button] or 'FFFFFF';
 	local icon, isAtlas = self:GetIconForButton(button, style)

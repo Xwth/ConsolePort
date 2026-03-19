@@ -1,8 +1,16 @@
 ---------------------------------------------------------------
 -- Assets
 ---------------------------------------------------------------
-function CPAPI.GetAsset(path)
-	return ([[Interface\AddOns\ConsolePort\Assets\%s]]):format(path)
+function CPAPI.GetAsset(path, arg1, ...)
+	return ([[Interface\AddOns\ConsolePort\Assets\%s]]):format(
+		arg1 and path:format(arg1, ...) or path)
+end
+
+function CPAPI.MakeAssetGetter(addonName)
+	return function(path, arg1, ...)
+		return ('Interface\\AddOns\\%s\\Assets\\%s'):format(
+			addonName, arg1 and path:format(arg1, ...) or path)
+	end
 end
 
 function CPAPI.GetClassIcon(class)
