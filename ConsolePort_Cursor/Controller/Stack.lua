@@ -28,7 +28,7 @@ end
 ---------------------------------------------------------------
 -- Externals
 ---------------------------------------------------------------
-function Stack:LockCore()            -- no-op: combat state is managed by CombatGuard end
+function Stack:LockCore(...)        env.CombatGuard:IsLocked()  end
 function Stack:IsCoreLocked()       return env.CombatGuard:IsLocked() end
 function Stack:IsCursorObstructed() return isObstructed end
 
@@ -56,8 +56,6 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 		end)
 	end
 
-	-- Use C_Timer.After to handle frames that set their points on show,
-	-- and to avoid node-jumping when closing multiple frames at once.
 	local function showHook(self)
 		if isEnabled and frames[self] then
 			updateOnBuffer(self)
