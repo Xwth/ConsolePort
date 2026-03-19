@@ -122,24 +122,23 @@ end
 function ScrollProxyMixin:OnClick(_, down)
 	if down then
 		self:Execute()
-		self.timer = -db('UIholdRepeatDelayFirst');
-		self.ticker = db('UIholdRepeatDelay');
+		self.repeatTimer:Start(env.Settings:GetRepeatDelayFirst(), env.Settings:GetRepeatDelay())
+		self:SetScript('OnUpdate', self.OnUpdate)
+	else
+		self.repeatTimer:Stop()
+		self:SetScript('OnUpdate', nil)
 	end
-	self:SetScript('OnUpdate', down and self.OnUpdate or nil)
 end
 
 function ScrollProxyMixin:OnUpdate(elapsed)
-	self.timer = self.timer + elapsed;
-	if self.timer > self.ticker then
-		self.timer = 0;
-		self:Execute()
-	end
+	self.repeatTimer:OnUpdate(elapsed)
 end
 
 for direction, ProxyButton in pairs({
 	Up   = Mixin(CreateFrame('Button', '$parentProxyUp', Scroll),   ScrollProxyMixin, { Delta = ScrollControllerPrimitive.Directions.Increase });
 	Down = Mixin(CreateFrame('Button', '$parentProxyDown', Scroll), ScrollProxyMixin, { Delta = ScrollControllerPrimitive.Directions.Decrease });
 }) do Scroll[direction] = ProxyButton;
+	ProxyButton.repeatTimer = env.RepeatTimer.Create(function() ProxyButton:Execute() end)
 	ProxyButton:SetScript('OnClick', ProxyButton.OnClick)
 	ProxyButton:RegisterForClicks('AnyUp', 'AnyDown')
 end

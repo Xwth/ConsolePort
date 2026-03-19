@@ -8,11 +8,9 @@ local env, db, _ = CPAPI.GetEnv(...)
 ---------------------------------------------------------------
 local After = C_Timer.After;
 local pairs, next, unravel = pairs, next, db.table.unravel;
-local isLocked, isEnabled, isObstructed;
+local isEnabled, isObstructed;
 ---------------------------------------------------------------
 local Stack = db:Register('Stack', CPAPI.CreateEventHandler({'Frame', '$parentUIStackHandler', ConsolePort}, {
-	'PLAYER_REGEN_ENABLED',
-	'PLAYER_REGEN_DISABLED',
 }, {
 	Registry = {};
 }), true);
@@ -28,17 +26,15 @@ local function GetFrameWidget(frame)
 end
 
 ---------------------------------------------------------------
--- Externals:
+-- Externals
 ---------------------------------------------------------------
-function Stack:LockCore(...)        isLocked = ...      end
-function Stack:IsCoreLocked()       return isLocked     end
+function Stack:LockCore()            -- no-op: combat state is managed by CombatGuard end
+function Stack:IsCoreLocked()       return env.CombatGuard:IsLocked() end
 function Stack:IsCursorObstructed() return isObstructed end
 
 ---------------------------------------------------------------
--- Update state on visibility change.
+-- Visibility tracking
 ---------------------------------------------------------------
-
--- Stacks: all frames, visible frames, show/hide hooks
 do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}, {}, {};
 
 	local function updateVisible(self)
@@ -49,34 +45,25 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 		) or nil;
 	end
 
-	local function updateBuffer(self, flag)
-		buffer[self] = flag;
-	end
-
 	local function updateOnBuffer(self)
-		updateBuffer(self, true)
+		buffer[self] = true;
 		After(0, function()
 			updateVisible(self)
-			updateBuffer(self, nil)
+			buffer[self] = nil;
 			if not next(buffer) then
 				Stack:UpdateFrames()
 			end
 		end)
 	end
 
-	-- OnShow:
-	-- Use C_Timer.After to circumvent omitting frames that set their points on show.
-	-- Check for point because frames can be visible but not drawn.
+	-- Use C_Timer.After to handle frames that set their points on show,
+	-- and to avoid node-jumping when closing multiple frames at once.
 	local function showHook(self)
 		if isEnabled and frames[self] then
 			updateOnBuffer(self)
 		end
 	end
 
-	-- OnHide:
-	-- Use C_Timer.After to circumvent node jumping when closing multiple frames,
-	-- which leads to the cursor ending up in an unexpected place on re-show.
-	-- E.g. close 5 bags, cursor was in 1st bag, ends up in 5th bag on re-show.
 	local function hideHook(self, force)
 		if isEnabled and frames[self] and (force or visible[self]) then
 			updateOnBuffer(self)
@@ -95,32 +82,20 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 		end
 	end
 
-	local function togglePassThrough(widget, state)
-		db:RunSafe(widget.SetAttribute, widget, env.Attributes.PassThrough, state)
-	end
-
-	-- Cache default methods so that frames with unaltered
-	-- metatables use hook scripts instead of a secure hook.
 	hooks[CPAPI.Index(UIParent).Show] = true
 	hooks[CPAPI.Index(UIParent).Hide] = true
 
-	-- When adding a new frame:
-	-- Store metatable functions for hooking show/hide scripts.
-	-- Most frames will use the same standard Show/Hide, but addons
-	-- may use custom metatables, which should still work with this approach.
 	function Stack:AddFrame(frame)
 		local widget = GetFrameWidget(frame)
 		if widget then
-			if ( not forbidden[widget] ) then
-				-- assert the frame isn't hooked twice
-				if ( not frames[widget] ) then
+			if not forbidden[widget] then
+				if not frames[widget] then
 					addHook(widget, 'Show', showHook)
 					addHook(widget, 'Hide', hideHook)
 				end
-
 				frames[widget] = true;
-				togglePassThrough(widget, true)
-				updateVisible(widget)
+				env.NodeAttr.SetPassThrough(widget, true)
+				updateOnBuffer(widget)
 			end
 			return true;
 		else
@@ -138,9 +113,9 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 	end
 
 	function Stack:LoadAddonFrames(name)
-		local frames = db('Stack/Registry/'..name)
-		if (type(frames) == 'table') then
-			for frame, enabled in pairs(frames) do
+		local addonFrames = db('Stack/Registry/'..name)
+		if (type(addonFrames) == 'table') then
+			for frame, enabled in pairs(addonFrames) do
 				if enabled then
 					self:AddFrame(frame)
 				end
@@ -153,7 +128,7 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 		if widget then
 			visible[widget] = nil;
 			frames[widget]  = nil;
-			togglePassThrough(widget, nil)
+			env.NodeAttr.SetPassThrough(widget, nil)
 		end
 	end
 
@@ -173,15 +148,13 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 	end
 
 	function Stack:SetCursorObstructor(idx, state)
-		if idx then
-			if not state then state = nil end
-			obstructors[idx] = state;
-			isObstructed = ((next(obstructors) and true) or false)
-			if not isObstructed then
-				self:UpdateFrames()
-			else
-				db.Cursor:OnStackChanged(false)
-			end
+		if not idx then return end
+		obstructors[idx] = state or nil;
+		isObstructed = not not next(obstructors);
+		if isObstructed then
+			db.Cursor:OnStackChanged(false)
+		else
+			self:UpdateFrames()
 		end
 	end
 
@@ -192,18 +165,16 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 		end
 	end
 
-	function Stack:UpdateFrames(updateCursor)
-		if not isLocked and not isObstructed then
-			self:UpdateFrameTracker()
-			RunNextFrame(function()
-				if not isLocked then
-					db.Cursor:OnStackChanged(not not next(visible))
-				end
-			end)
-		end
+	function Stack:UpdateFrames()
+		if env.CombatGuard:IsLocked() or isObstructed then return end
+		self:UpdateFrameTracker()
+		RunNextFrame(function()
+			if not env.CombatGuard:IsLocked() then
+				db.Cursor:OnStackChanged(not not next(visible))
+			end
+		end)
 	end
 
-	-- Returns a stack of visible frames.
 	function Stack:IterateVisibleCursorFrames()
 		return pairs(visible)
 	end
@@ -219,25 +190,9 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 	end
 end
 
----------------------------------------------------------------
--- Events
----------------------------------------------------------------
-function Stack:PLAYER_REGEN_ENABLED()
-	After(db('UIleaveCombatDelay'), function()
-		if not InCombatLockdown() then
-			self:LockCore(false)
-			self:UpdateFrames()
-		end
-	end)
-end
-
-function Stack:PLAYER_REGEN_DISABLED()
-	db.Cursor:OnStackChanged(false)
-	self:LockCore(true)
-end
 
 ---------------------------------------------------------------
--- Stack management over sessions
+-- Registry persistence
 ---------------------------------------------------------------
 db:Save('Stack/Registry', 'ConsolePortUIStack')
 
@@ -246,44 +201,39 @@ function Stack:GetRegistrySet(name)
 	return self.Registry[name];
 end
 
+-- Registers a frame name into a set.
+-- If the entry doesn't exist, defaults to (state ?? true).
+-- If state is provided, always overwrites.
 function Stack:TryRegisterFrame(set, name, state)
 	if not name then return end
-
 	local stack = self:GetRegistrySet(set)
-	if (stack[name] == nil) then
+	if stack[name] == nil then
 		stack[name] = (state == nil) or state;
-	elseif (state ~= nil) then
+	elseif state ~= nil then
 		stack[name] = state;
 	end
 	return stack[name];
 end
 
+-- Marks a frame as disabled (false) or removes it (wipe=true).
+-- Returns true if the entry existed.
 function Stack:TryUnregisterFrame(set, name, wipe)
 	if not name then return end
-
 	local stack = self:GetRegistrySet(set)
-	if (stack[name] ~= nil) then
-		if wipe then
-			stack[name] = nil;
-		else
-			stack[name] = false;
-		end
-		return true;
-	end
+	if stack[name] == nil then return end
+	stack[name] = wipe and nil or false;
+	return true;
 end
 
 function Stack:OnDataLoaded()
 	db:Load('Stack/Registry', 'ConsolePortUIStack')
 
-	-- Load standalone frame stack
 	for i, frame in ipairs(env.StandaloneFrameStack) do
 		self:TryRegisterFrame(_, frame)
 	end
 
-	-- Toggle the stack core
 	self:ToggleCore()
 
-	-- Load all existing frames in the registry
 	for addon in pairs(self.Registry) do
 		if CPAPI.IsAddOnLoaded(addon) then
 			self:LoadAddonFrames(addon)
@@ -299,26 +249,30 @@ function Stack:OnDataLoaded()
 	db:RegisterSafeCallback('Settings/UIenableCursor', self.ToggleCore, self)
 	db:RegisterSafeCallback('Settings/UIshowOnDemand', self.ToggleCore, self)
 
+	env.CombatGuard:Subscribe('Stack', {
+		OnCombatStart = function()
+			db.Cursor:OnStackChanged(false)
+			-- isLocked is now managed by CombatGuard
+		end,
+		OnCombatEnd = function()
+			Stack:UpdateFrames()
+		end,
+	})
+
 	return CPAPI.BurnAfterReading;
 end
 
 ---------------------------------------------------------------
 -- Frame watching
 ---------------------------------------------------------------
--- Used to track and bind additional frames to the UI cursor.
--- Necessary since all frames do not exist when the game loads.
--- Automatically adds all special frames and managed panels.
-
 do  local specialFrames, poolFrames, watchers = {}, {}, {};
 
 	local function TryAddSpecialFrame(self, frame)
 		if specialFrames[frame] then return end;
-		-- If the frame is not in the stack, try to add it.
 		if self:TryRegisterFrame(_, frame) then
 			if self:AddFrame(frame) then
 				specialFrames[frame] = true;
 			end
-		-- The frame exists, but should not be added.
 		elseif GetFrameWidget(frame) then
 			specialFrames[frame] = true;
 		end
@@ -343,7 +297,6 @@ do  local specialFrames, poolFrames, watchers = {}, {}, {};
 		if widget and not Stack:IsFrameVisibleToCursor(widget) then
 			if Stack:TryRegisterFrame(_, widget:GetName()) then
 				Stack:AddFrame(widget)
-				Stack:UpdateFrames()
 			end
 		end
 	end
@@ -352,7 +305,6 @@ do  local specialFrames, poolFrames, watchers = {}, {}, {};
 		if not Stack:IsFrameVisibleToCursor(frame) then
 			if not poolFrames[frame] then
 				Stack:AddFrame(frame)
-				Stack:UpdateFrames()
 				poolFrames[frame] = true;
 				return true;
 			end
@@ -371,12 +323,11 @@ do  local specialFrames, poolFrames, watchers = {}, {}, {};
 	end
 
 	if (_G.Menu and _G.Menu.GetManager) then
-		local menu = _G.Menu; -- Blizzard's menu manager
+		local menu = _G.Menu;
 		local mgr  = menu.GetManager();
 		local function CatchOpenMenu()
 			local openMenu = mgr:GetOpenMenu()
 			if CatchPoolFrame(openMenu) then
-				-- EXPERIMENTAL: catch submenus, if the menu is tagged
 				for _, tag in ipairs(menu.GetOpenMenuTags()) do
 					menu.ModifyMenu(tag, function(_, description)
 						description:AddMenuAcquiredCallback(CatchPoolFrame)
@@ -386,7 +337,7 @@ do  local specialFrames, poolFrames, watchers = {}, {}, {};
 				Stack:Flush(openMenu)
 			end
 		end
-		hooksecurefunc(mgr, 'OpenMenu', CatchOpenMenu)
+		hooksecurefunc(mgr, 'OpenMenu',        CatchOpenMenu)
 		hooksecurefunc(mgr, 'OpenContextMenu', CatchOpenMenu)
 	end
 

@@ -6,10 +6,7 @@
 
 local env, db = CPAPI.GetEnv(...);
 local Nudge, Node, Lerp, sqrt, band =
-	CPAPI.CreateEventHandler({'Frame', '$parentNudgeHandler', env.Cursor}, {
-		'PLAYER_REGEN_DISABLED';
-		'PLAYER_REGEN_ENABLED';
-	}),
+	CPAPI.CreateEventHandler({'Frame', '$parentNudgeHandler', env.Cursor}, {}),
 	LibStub('ConsolePortNode'),
 	FrameDeltaLerp, sqrt, bit.band;
 
@@ -36,14 +33,15 @@ Nudge.Flags = CPAPI.CreateFlagClosures(Nudge.Direction);
 ---------------------------------------------------------------
 function Nudge:OnDataLoaded()
 	Mixin(self, Vector2DMixin)
-	CPAPI.Start(self, true)
+	Mixin(self, env.SubControllerMixin)
+	self:InitLifecycle()
 	self:OnHide()
 	self:OnVariablesChanged()
 	return CPAPI.BurnAfterReading;
 end
 
 function Nudge:OnVariablesChanged()
-	local modifier = db('UImodifierNudge');
+	local modifier = env.Settings:GetNudgeModifier();
 	local criteria, isActive = {}, false;
 	for modID, func in pairs(self.Predicates) do
 		if ( modID == modifier ) then
@@ -54,7 +52,7 @@ function Nudge:OnVariablesChanged()
 		end
 	end
 
-	self.IsEnabled = CPAPI.Static(db('UImodifierCommands') ~= modifier);
+	self.IsEnabled = CPAPI.Static(env.Settings:GetCommandModifier() ~= modifier);
 	self.IsActive  = isActive and GenerateClosure(function(mod1, mod2, mod3)
 		return mod1() and not mod2() and not mod3();
 	end, unpack(criteria)) or CPAPI.Static(false);
@@ -106,12 +104,6 @@ function Nudge:Reset()
 	self:SetXY(0, 0)
 	self:SetScript('OnUpdate', nil)
 end
-
-function Nudge:OnBindingCatcherShown(isCatcherShown)
-	self:SetShown(not isCatcherShown)
-end
-
-db:RegisterCallback('OnBindingCatcherShown', Nudge.OnBindingCatcherShown, Nudge)
 
 ---------------------------------------------------------------
 -- Movement
@@ -174,6 +166,3 @@ function Nudge:MODIFIER_STATE_CHANGED()
 	end
 	self:Reset()
 end
-
-Nudge.PLAYER_REGEN_DISABLED = Nudge.Hide;
-Nudge.PLAYER_REGEN_ENABLED  = Nudge.Show;

@@ -9,8 +9,6 @@
 local env, db, name = CPAPI.GetEnv(...);
 local Cursor, Node, Input, Stack, Scroll, Fade, Hooks =
 	CPAPI.EventHandler(ConsolePortCursor, {
-		'PLAYER_REGEN_ENABLED';
-		'PLAYER_REGEN_DISABLED';
 		'ADDON_ACTION_FORBIDDEN';
 	}),
 	env.Node,
@@ -25,54 +23,6 @@ Cursor.InCombat = InCombatLockdown;
 ---------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------
-function Cursor:PLAYER_REGEN_DISABLED()
-	self.isCombatPaused = true;
-	if self:IsShown() then
-		Fade.Out(self, 0.2, self:GetAlpha(), 0)
-		self:ShowAfterCombat(true)
-		self:SetFlashNextNode()
-		self:Release()
-	end
-end
-
-function Cursor:PLAYER_REGEN_ENABLED()
-	-- in case the cursor is showing and waiting to hide OOC
-	if self:IsShown() and not self.showAfterCombat then
-		self:Hide()
-	end
-	-- time lock this in case it fires more than once
-	if not self.timeLock then
-		self.timeLock = true;
-
-		local clearLockedState = function()
-			self.timeLock = nil;
-			self.isCombatPaused = nil;
-			self.onEnableCallback = nil;
-		end
-
-		-- The delay is doubled if the player is dead, to prevent
-		-- accidental spirit release by button spam (and slow reaction time).
-		local delay = db('UIleaveCombatDelay') * (UnitIsDead('player') and 2 or 1)
-
-		if self.showAfterCombat then
-			self.onEnableCallback = self.onEnableCallback or function()
-				Fade.In(self, 0.2, self:GetAlpha(), 1)
-				if not self:InCombat() and self:IsShown() then
-					self:SetBasicControls()
-					self:Refresh()
-				end
-			end
-			C_Timer.After(delay, function()
-				self.onEnableCallback()
-				self.showAfterCombat = nil;
-				clearLockedState()
-			end)
-		else -- do nothing but clear the locked state
-			C_Timer.After(delay, clearLockedState)
-		end
-	end
-end
-
 function Cursor:ADDON_ACTION_FORBIDDEN(addOnName, action)
 	if ( addOnName == name ) then
 		env.HandleTaintError(action)
@@ -87,24 +37,29 @@ function Cursor:OnClick()
 end
 
 function Cursor:OnStackChanged(hasFrames)
-	if db('UIshowOnDemand') or not IsGamePadFreelookEnabled() then
-		return
+	if db('UIshowOnDemand') then return end
+	if not hasFrames then
+		return self:Disable()
 	end
-	return self:SetEnabled(hasFrames)
+	if IsGamePadFreelookEnabled() then
+		return self:Enable()
+	end
+	-- Freelook may not be restored yet (e.g. ring just closed); retry next frame.
+	RunNextFrame(function()
+		if IsGamePadFreelookEnabled() then
+			self:Enable()
+		end
+	end)
 end
 
 function Cursor:SetEnabled(enable)
-	if enable then
-		return self:Enable()
-	end
-	return self:Disable()
+	return enable and self:Enable() or self:Disable()
 end
 
 function Cursor:Enable()
-	local inCombat, disabled = self:IsObstructed()
-	if disabled then
-		return
-	elseif inCombat then
+	local inCombat, disabled = self:InCombat(), not db('UIenableCursor')
+	if disabled then return end
+	if inCombat or self.isCombatPaused then
 		return self:ShowAfterCombat(true)
 	end
 	if not self:IsShown() then
@@ -115,8 +70,8 @@ function Cursor:Enable()
 end
 
 function Cursor:Disable()
-	local inCombat, disabled = self:IsObstructed()
-	if inCombat or disabled then
+	local inCombat = self:InCombat()
+	if inCombat or self.isCombatPaused then
 		self:ShowAfterCombat(false)
 	end
 	if self:IsShown() and not inCombat then
@@ -145,6 +100,7 @@ function Cursor:Release()
 	Input:Release(self)
 end
 
+-- Returns inCombat, disabled, isCombatPaused
 function Cursor:IsObstructed()
 	return self:InCombat(), not db('UIenableCursor'), self.isCombatPaused;
 end
@@ -183,12 +139,11 @@ function Cursor:RefreshToFrame(frame)
 end
 
 function Cursor:SetCurrentNode(node, assertNotMouse, forceEnable)
-	local isGamepadActive = IsGamePadFreelookEnabled()
+	if not db('UIenableCursor') then return end
+	if db('UIshowOnDemand') and not self:IsShown() then return end
 
-	-- Prerequisites
-	if not db('UIenableCursor') then return end;
-	if db('UIshowOnDemand') and not self:IsShown() then return end;
-	if not isGamepadActive and not forceEnable then return end;
+	local isGamepadActive = IsGamePadFreelookEnabled()
+	if not isGamepadActive and not forceEnable then return end
 
 	local object = node and Node.ScanLocal(node)[1]
 	if object and (not assertNotMouse or isGamepadActive or forceEnable) then
@@ -211,9 +166,7 @@ end
 
 function Cursor:SetOnEnableCallback(callback, ...)
 	local inCombat, disabled, isCombatPaused = self:IsObstructed()
-	if disabled then
-		return
-	end
+	if disabled then return end
 	if not inCombat and not isCombatPaused then
 		return callback(self, ...)
 	end
@@ -235,59 +188,26 @@ end
 ---------------------------------------------------------------
 -- Navigation and input
 ---------------------------------------------------------------
-do  -- Create input proxy for basic controls
+do
 	local InputProxy = function(key, self, isDown)
 		Cursor:Input(key, self, isDown)
 	end
 
-	local DpadRepeater = function(self, elapsed)
-		self.timer = self.timer + elapsed
-		if self.timer >= self:GetAttribute('ticker') and self.state then
-			local func = self:GetAttribute(CPAPI.ActionTypeRelease)
-			if ( func == 'UIControl' ) then
-				self[func](self, self.state, self:GetAttribute('id'))
-			end
-			self.timer = 0
-		end
-	end
-
-	local DpadInit = function(self, dpadRepeater)
-		if not db('UIholdRepeatDisable') then
-			self:SetAttribute('timer', -db('UIholdRepeatDelayFirst'))
-			self:SetAttribute('ticker', db('UIholdRepeatDelay'))
-			self:SetScript('OnUpdate', dpadRepeater)
-			self:Show()
-		end
-	end
-
-	local DpadClear = function(self)
-		self:SetScript('OnUpdate', nil)
-		self:Hide()
-	end
-
+	-- D-pad controls are static; built once and reused via RepeatTimer.
 	function Cursor:GetBasicControls()
-		--  @init : (optional) function to set up properties
-		--  @clear: (optional) function to run when clearing
-		--  @args : (optional) properties for initialization
-		if not self.DpadControls then
-			self.DpadControls = {
-				PADDUP    = {GenerateClosure(InputProxy, 'PADDUP'),    DpadInit, DpadClear, DpadRepeater};
-				PADDDOWN  = {GenerateClosure(InputProxy, 'PADDDOWN'),  DpadInit, DpadClear, DpadRepeater};
-				PADDLEFT  = {GenerateClosure(InputProxy, 'PADDLEFT'),  DpadInit, DpadClear, DpadRepeater};
-				PADDRIGHT = {GenerateClosure(InputProxy, 'PADDRIGHT'), DpadInit, DpadClear, DpadRepeater};
-			};
-		end
 		if not self.BasicControls then
-			self.BasicControls = CopyTable(self.DpadControls)
+			self.BasicControls = env.RepeatTimer.CreateDpadSet(InputProxy)
 		end
+		-- Prune any stale dynamic keys not in the D-pad set
+		local DpadKeys = { PADDUP = true, PADDDOWN = true, PADDLEFT = true, PADDRIGHT = true };
 		for key in pairs(self.BasicControls) do
-			if not self.DpadControls[key] then
+			if not DpadKeys[key] then
 				self.BasicControls[key] = nil;
 			end
 		end
 		self.DynamicControls = {
-			db('Settings/UICursorSpecial');
-			db('Settings/UICursorCancel');
+			env.Settings:GetButton('Special');
+			env.Settings:GetButton('Cancel');
 		};
 		for _, key in ipairs(self.DynamicControls) do
 			if not self.BasicControls[key] then
@@ -307,8 +227,7 @@ do  -- Create input proxy for basic controls
 
 	function Cursor:SetBasicControls()
 		Input:Release(self)
-		local controls = self:GetBasicControls()
-		for button, settings in pairs(controls) do
+		for button, settings in pairs(self:GetBasicControls()) do
 			SetDirectUIControl(self, button, settings);
 		end
 	end
@@ -320,7 +239,6 @@ do  -- Create input proxy for basic controls
 		end
 	end
 
-	-- Callbacks to reset controls when inputters change
 	do local function ResetControls(self) self.BasicControls, self.DynamicControls = nil; end
 		db:RegisterCallbacks(ResetControls, Cursor,
 			'Settings/UICursorSpecial',
@@ -330,7 +248,6 @@ do  -- Create input proxy for basic controls
 		);
 	end
 
-	-- Emulated clicks for handlers that do not use OnClick (this may be unsafe)
 	local EmuClick = function(self, down)
 		local node, emubtn, script = self.node, self.emubtn;
 		if node then
@@ -390,11 +307,6 @@ function Cursor:FlatScanStack(key)
 end
 
 function Cursor:Navigate(key)
-	-- Navigation algorithm (so I remember what this does):
-	-- 1. With unlimited access, scan the entire UI stack, but prioritize the current frame.
-	-- 2. With optimized algorithm, scan the current frame and its children, then the entire UI stack.
-	-- 3. With neither, scan the entire visible panel UI stack.
-	-- 4. If no target is found, navigate to the closest candidate.
 	local target, changed;
 	if db('UIaccessUnlimited') then
 		target, changed = self:SetCurrent(self:ReverseScanUI(self:GetCurrentNode(), key))
@@ -435,7 +347,7 @@ function Cursor:Input(key, caller, isDown)
 end
 
 ---------------------------------------------------------------
--- Queries for the current node
+-- Current node queries
 ---------------------------------------------------------------
 function Cursor:SetCurrent(newObj)
 	local oldObj = self:GetCurrent()
@@ -466,22 +378,19 @@ function Cursor:GetCurrentObjectType()
 	return obj and obj.object;
 end
 
-
 function Cursor:IsCurrentNodeDrawn()
 	local node = self:GetCurrentNode()
 	return node and ( node:IsVisible() and Node.IsDrawn(node) )
 end
 
 function Cursor:IsValidForAutoScroll(super, force)
-	if not super then return end;
-
+	if not super then return end
 	local old = self:GetOld()
 	local oldSuper = old and old.super;
-	local validSuper = force or super == oldSuper;
-	return validSuper and
-		not super:GetAttribute(env.Attributes.IgnoreScroll) and
-		not IsShiftKeyDown() and
-		not IsControlKeyDown()
+	return (force or super == oldSuper)
+		and not env.NodeAttr.IsIgnoreScroll(super)
+		and not IsShiftKeyDown()
+		and not IsControlKeyDown()
 end
 
 function Cursor:GetSelectParams(obj, triggerOnEnter, automatic)
@@ -498,8 +407,7 @@ function Cursor:GetOldNode()
 end
 
 function Cursor:StoreCurrent()
-	local current = self:GetCurrent()
-	self.Old = current;
+	self.Old = self:GetCurrent();
 	self:SetCurrent(nil)
 end
 
@@ -529,11 +437,10 @@ do	local function IsDisabledButton(node)
 end
 
 ---------------------------------------------------------------
--- Node management resources
+-- Node management
 ---------------------------------------------------------------
 function Cursor:IsClickableNode(node, object)
-	local isClickableObject = (env.IsClickableType[object] and object ~= 'EditBox');
-	if not isClickableObject then
+	if not (env.IsClickableType[object] and object ~= 'EditBox') then
 		return false;
 	end
 	if node:GetScript('OnClick') then
@@ -561,13 +468,8 @@ end
 function Cursor:Select(node, object, super, triggerOnEnter, automatic)
 	self:OnEnterNode(triggerOnEnter and node)
 
-	-- Scroll to node center
 	if self:IsValidForAutoScroll(super, automatic) then
 		Scroll:To(node, super, self:GetOldNode(), automatic)
-	end
-
-	if (object == 'Slider') then
-		-- TODO: Override:HorizontalScroll(Cursor, node)
 	end
 
 	self:SetScrollButtonsForNode(node, super)
@@ -585,9 +487,9 @@ function Cursor:SetScrollButtonsForNode(node, super)
 	end
 	self:ToggleScrollIndicator(scrollUp and scrollDown)
 	if scrollUp and scrollDown then
-		local modifier = db('UImodifierCommands')
+		local modifier = env.Settings:GetCommandModifier()
 		self.scrollers = {
-			Input:SetGlobal(format('%s-%s', modifier, 'PADDUP'), self, scrollUp:GetName(), true),
+			Input:SetGlobal(format('%s-%s', modifier, 'PADDUP'),   self, scrollUp:GetName(),   true),
 			Input:SetGlobal(format('%s-%s', modifier, 'PADDDOWN'), self, scrollDown:GetName(), true)
 		};
 		return scrollUp, scrollDown
@@ -602,8 +504,8 @@ end
 
 function Cursor:SetClickButtonsForNode(node, macroReplacement, isClickable)
 	for click, button in pairs({
-		LeftButton  = db('Settings/UICursorLeftClick');
-		RightButton = db('Settings/UICursorRightClick');
+		LeftButton  = env.Settings:GetButton('LeftClick');
+		RightButton = env.Settings:GetButton('RightClick');
 	}) do for modifier in db:For('Gamepad/Index/Modifier/Active') do
 			if macroReplacement then
 				local unit = UIDROPDOWNMENU_INIT_MENU.unit
@@ -619,10 +521,10 @@ end
 
 function Cursor:AttemptDragStart()
 	local node = self:GetCurrentNode()
-	local script = node and not node:GetAttribute(env.Attributes.IgnoreDrag)
+	local script = node and not env.NodeAttr.IsIgnoreDrag(node)
 		and node:GetScript('OnDragStart');
 	if script then
-		local widget = Input:GetActiveWidget(db('Settings/UICursorLeftClick'), self)
+		local widget = Input:GetActiveWidget(env.Settings:GetButton('LeftClick'), self)
 		local click = widget and widget:HasClickButton()
 		if widget and widget.state and click then
 			widget:ClearClickButton()
@@ -649,8 +551,8 @@ do local function GetCloseButton(node)
 	end
 
 	function Cursor:SetCancelButtonForNode(node)
-		local cancelButton = db('Settings/UICursorCancel')
-		if not cancelButton then return end;
+		local cancelButton = env.Settings:GetButton('Cancel')
+		if not cancelButton then return end
 
 		if Hooks:GetCancelClickHandler(node) then
 			return self:SetBasicControl(cancelButton)
@@ -658,11 +560,6 @@ do local function GetCloseButton(node)
 
 		local closeButton = FindCloseButton(node)
 		if C_Widget.IsFrameWidget(closeButton) then RunNextFrame(function()
-			-- A cancel action can trigger the current node to disappear,
-			-- for example by closing a dialog. If the cursor then jumps to
-			-- another node that has a related close button, the script order
-			-- will result in both things happening in one frame. Therefore,
-			-- the cancel button needs to be mounted in the next frame instead.
 			if self:InCombat() or not self:IsShown() then return end;
 			Input:SetButton(cancelButton, self, closeButton, true, 'LeftButton')
 		end) end;
@@ -670,6 +567,32 @@ do local function GetCloseButton(node)
 end
 
 ---------------------------------------------------------------
--- Initialize the cursor
+-- CombatGuard subscription
 ---------------------------------------------------------------
 CPAPI.Start(Cursor)
+
+env.CombatGuard:Subscribe('Cursor', {
+	OnCombatStart = function()
+		Cursor.isCombatPaused = true;
+		if Cursor:IsShown() then
+			Fade.Out(Cursor, 0.2, Cursor:GetAlpha(), 0)
+			Cursor:ShowAfterCombat(true)
+			Cursor:SetFlashNextNode()
+			Cursor:Release()
+		end
+	end,
+	OnCombatEnd = function()
+		if Cursor:IsShown() and not Cursor.showAfterCombat then
+			Cursor:Hide()
+		end
+		Cursor.isCombatPaused = nil;
+		if Cursor.showAfterCombat then
+			Fade.In(Cursor, 0.2, Cursor:GetAlpha(), 1)
+			if not Cursor:InCombat() and Cursor:IsShown() then
+				Cursor:SetBasicControls()
+				Cursor:Refresh()
+			end
+			Cursor.showAfterCombat = nil;
+		end
+	end,
+})

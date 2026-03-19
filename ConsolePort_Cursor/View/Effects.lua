@@ -60,6 +60,14 @@ end
 ---------------------------------------------------------------
 -- Cursor textures and animations
 ---------------------------------------------------------------
+local function ApplyTexture(region, texture, useAtlas)
+	if useAtlas and texture then
+		region:SetAtlas(texture)
+	else
+		region:SetTexture(useAtlas and nil or texture)
+	end
+end
+
 do	local f, path = format, 'Gamepad/Active/Icons/%s-64';
 	-- lambdas to handle texture swapping without caching icons
 	local function left  () return db('UIpointerDefaultIcon') and db(f(path, db('UICursorLeftClick'))) end
@@ -92,17 +100,7 @@ function Cursor:SetTexture(texture)
 	local object = texture or self:GetCurrentObjectType()
 	local evaluator = self.Textures[object]
 	if ( evaluator ~= self.textureEvaluator ) then
-		local node = self:GetCurrentNode()
-		if self.useAtlasIcons then
-			local atlas = evaluator(node)
-			if atlas then
-				self.Display.Button:SetAtlas(atlas)
-			else
-				self.Display.Button:SetTexture(nil)
-			end
-		else
-			self.Display.Button:SetTexture(evaluator(node))
-		end
+		ApplyTexture(self.Display.Button, evaluator(self:GetCurrentNode()), self.useAtlasIcons)
 	end
 	self.textureEvaluator = evaluator;
 end
@@ -112,20 +110,12 @@ function Cursor:ToggleScrollIndicator(enabled)
 	if self.isScrollingActive == enabled then return end;
 	local evaluator = self.Textures.Modifier;
 	local texture   = evaluator and evaluator() or nil;
-	local newAlpha  = ( enabled and texture and 1 ) or 0;
+	local newAlpha  = (enabled and texture and 1) or 0;
 	Fade.In(self.Display.ScrollUp,   0.2, self.Display.ScrollUp:GetAlpha(),   newAlpha)
 	Fade.In(self.Display.ScrollDown, 0.2, self.Display.ScrollDown:GetAlpha(), newAlpha)
 	Fade.In(self.Display.Scroller,   0.2, self.Display.Scroller:GetAlpha(),   newAlpha)
 	if enabled then
-		if self.useAtlasIcons then
-			if texture then
-				self.Display.Scroller:SetAtlas(texture)
-			else
-				self.Display.Scroller:SetTexture(nil)
-			end
-		else
-			self.Display.Scroller:SetTexture(texture)
-		end
+		ApplyTexture(self.Display.Scroller, texture, self.useAtlasIcons)
 	end
 	self.isScrollingActive = enabled;
 end
@@ -160,7 +150,7 @@ end
 
 function Cursor:SetHighlight(node)
 	if node and (not node.IsEnabled or node:IsEnabled())
-    and not node:GetAttribute(env.Attributes.IgnoreMime) then
+    and not env.NodeAttr.IsIgnoreMime(node) then
 		self.Mime:SetNode(node)
 	else
 		self:ClearHighlight()
