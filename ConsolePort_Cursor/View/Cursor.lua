@@ -86,6 +86,7 @@ end
 
 function Cursor:OnHide()
 	self.timer = 0
+	self.hasScannedSinceNotDrawn = nil
 	self:SetAlpha(1)
 	self:SetFlashNextNode()
 	self:Release()
@@ -176,11 +177,21 @@ end
 function Cursor:OnUpdate(elapsed)
 	if self:InCombat() then return end
 	if not self:IsCurrentNodeDrawn() then
-		self:SetFlashNextNode()
-		if not self:Refresh() then
-			self:Hide()
+		if Stack:IsDirty() then
+			Stack:ClearDirty()
+			self:SetFlashNextNode()
+			if not self:Refresh() then
+				self:Hide()
+			end
+		elseif not self.hasScannedSinceNotDrawn then
+			self.hasScannedSinceNotDrawn = true
+			self:SetFlashNextNode()
+			if not self:Refresh() then
+				self:Hide()
+			end
 		end
 	else
+		self.hasScannedSinceNotDrawn = nil
 		self:RefreshAnchor()
 	end
 end

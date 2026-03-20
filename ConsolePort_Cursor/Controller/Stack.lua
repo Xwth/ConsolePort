@@ -10,6 +10,27 @@ local After = C_Timer.After;
 local pairs, next, unravel = pairs, next, db.table.unravel;
 local isEnabled, isObstructed;
 ---------------------------------------------------------------
+local STRATA_LEVELS = {
+	BACKGROUND = 0, LOW = 10000, MEDIUM = 20000, HIGH = 30000,
+	DIALOG = 40000, FULLSCREEN = 50000, FULLSCREEN_DIALOG = 60000, TOOLTIP = 70000,
+};
+
+local function getAbsLevel(frame)
+	return (STRATA_LEVELS[frame:GetFrameStrata()] or 0) + frame:GetFrameLevel()
+end
+
+local function getNormalizedRect(frame)
+	local x, y, w, h = frame:GetRect()
+	if not x then return end
+	local s = frame:GetEffectiveScale()
+	return x * s, y * s, (x + w) * s, (y + h) * s
+end
+
+local function isFullyOccluded(iL, iB, iR, iT, oL, oB, oR, oT)
+	return oL <= iL and oB <= iB and oR >= iR and oT >= iT
+end
+
+---------------------------------------------------------------
 local Stack = db:Register('Stack', CPAPI.CreateEventHandler({'Frame', '$parentUIStackHandler', ConsolePort}, {
 }, {
 	Registry = {};
@@ -36,6 +57,7 @@ function Stack:IsCursorObstructed() return isObstructed end
 -- Visibility tracking
 ---------------------------------------------------------------
 do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}, {}, {};
+	local dirty = true;
 
 	local function updateVisible(self)
 		visible[self] = (
@@ -51,6 +73,7 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 			updateVisible(self)
 			buffer[self] = nil;
 			if not next(buffer) then
+				dirty = true;
 				Stack:UpdateFrames()
 			end
 		end)
@@ -106,6 +129,7 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 		local wasVisible = visible[frame];
 		updateVisible(frame)
 		if wasVisible ~= visible[frame] then
+			dirty = true;
 			self:UpdateFrames()
 		end
 	end
@@ -124,6 +148,9 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 	function Stack:RemoveFrame(frame)
 		local widget = GetFrameWidget(frame)
 		if widget then
+			if visible[widget] then
+				dirty = true;
+			end
 			visible[widget] = nil;
 			frames[widget]  = nil;
 			env.NodeAttr.SetPassThrough(widget, nil)
@@ -173,12 +200,68 @@ do local frames, visible, buffer, hooks, forbidden, obstructors = {}, {}, {}, {}
 		end)
 	end
 
+	local filterResult = {}
+	local function filterByZOrder()
+		wipe(filterResult)
+		local count = 0
+		for frame in pairs(visible) do
+			local l, b, r, t = getNormalizedRect(frame)
+			if l then
+				count = count + 1
+				filterResult[count] = {
+					frame = frame,
+					level = getAbsLevel(frame),
+					l = l, b = b, r = r, t = t,
+					area = (r - l) * (t - b),
+				}
+			end
+		end
+		if count <= 1 then return end
+		-- Sort descending: by level first, then by area (larger frames on top at same level)
+		table.sort(filterResult, function(a, b)
+			if a.level ~= b.level then return a.level > b.level end
+			if a.area ~= b.area then return a.area > b.area end
+			return tostring(a.frame) > tostring(b.frame)
+		end)
+		for i = count, 1, -1 do
+			local fi = filterResult[i]
+			local cx = (fi.l + fi.r) * 0.5
+			local cy = (fi.b + fi.t) * 0.5
+			for j = 1, i - 1 do
+				local fj = filterResult[j]
+				-- Filter if fully occluded, or if center is inside a higher-priority frame
+				if isFullyOccluded(fi.l, fi.b, fi.r, fi.t, fj.l, fj.b, fj.r, fj.t)
+				or (cx >= fj.l and cx <= fj.r and cy >= fj.b and cy <= fj.t) then
+					tremove(filterResult, i)
+					count = count - 1
+					break
+				end
+			end
+		end
+	end
+
 	function Stack:IterateVisibleCursorFrames()
 		return pairs(visible)
 	end
 
 	function Stack:GetVisibleCursorFrames()
+		filterByZOrder()
+		if #filterResult > 0 then
+			local frames = {}
+			for i = 1, #filterResult do
+				frames[i] = filterResult[i].frame
+			end
+			return unpack(frames)
+		end
 		return unravel(visible)
+	end
+
+	function Stack:IsDirty()
+		return dirty;
+	end
+
+	function Stack:ClearDirty()
+		dirty = false;
 	end
 
 	function Stack:IsFrameVisibleToCursor(frame, ...)
