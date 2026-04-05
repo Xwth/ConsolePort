@@ -5,23 +5,16 @@
 -- and the directional pad.
 
 local env, db = CPAPI.GetEnv(...);
+local tinsert = tinsert;
 local Nudge, Node, Lerp, sqrt, band =
-	CPAPI.CreateEventHandler({'Frame', '$parentNudgeHandler', env.Cursor}, {
-		'PLAYER_REGEN_DISABLED';
-		'PLAYER_REGEN_ENABLED';
-	}),
+	CPAPI.CreateEventHandler({'Frame', '$parentNudgeHandler', env.Cursor}, {}),
 	LibStub('ConsolePortNode'),
 	FrameDeltaLerp, sqrt, bit.band;
 
 ---------------------------------------------------------------
 -- Controls
 ---------------------------------------------------------------
-Nudge.Predicates = {
-	SHIFT = IsShiftKeyDown;
-	CTRL  = IsControlKeyDown;
-	ALT   = IsAltKeyDown;
-};
-
+-- values are explicit bitmask flags
 Nudge.Direction = {
 	PADDUP    = 0x01;
 	PADDRIGHT = 0x02;
@@ -36,16 +29,17 @@ Nudge.Flags = CPAPI.CreateFlagClosures(Nudge.Direction);
 ---------------------------------------------------------------
 function Nudge:OnDataLoaded()
 	Mixin(self, Vector2DMixin)
-	CPAPI.Start(self, true)
+	Mixin(self, env.SubControllerMixin)
+	self:InitLifecycle()
 	self:OnHide()
 	self:OnVariablesChanged()
 	return CPAPI.BurnAfterReading;
 end
 
 function Nudge:OnVariablesChanged()
-	local modifier = db('UImodifierNudge');
+	local modifier = env.Settings:GetNudgeModifier();
 	local criteria, isActive = {}, false;
-	for modID, func in pairs(self.Predicates) do
+	for modID, func in pairs(env.ModifierPredicates) do
 		if ( modID == modifier ) then
 			isActive = true;
 			tinsert(criteria, 1, func);
@@ -54,7 +48,7 @@ function Nudge:OnVariablesChanged()
 		end
 	end
 
-	self.IsEnabled = CPAPI.Static(db('UImodifierCommands') ~= modifier);
+	self.IsEnabled = CPAPI.Static(env.Settings:GetCommandModifier() ~= modifier);
 	self.IsActive  = isActive and GenerateClosure(function(mod1, mod2, mod3)
 		return mod1() and not mod2() and not mod3();
 	end, unpack(criteria)) or CPAPI.Static(false);
@@ -69,12 +63,14 @@ db:RegisterCallbacks(Nudge.OnVariablesChanged, Nudge,
 -- Handlers
 ---------------------------------------------------------------
 function Nudge:OnShow()
+	CallbackRegistrantMixin.OnShow(self)
 	if self:IsEnabled() then
 		self:RegisterEvent('MODIFIER_STATE_CHANGED')
 	end
 end
 
 function Nudge:OnHide()
+	CallbackRegistrantMixin.OnHide(self)
 	self:UnregisterAllEvents()
 	self:EnableGamePadButton(false)
 	self:Reset()
@@ -106,12 +102,6 @@ function Nudge:Reset()
 	self:SetXY(0, 0)
 	self:SetScript('OnUpdate', nil)
 end
-
-function Nudge:OnBindingCatcherShown(isCatcherShown)
-	self:SetShown(not isCatcherShown)
-end
-
-db:RegisterCallback('OnBindingCatcherShown', Nudge.OnBindingCatcherShown, Nudge)
 
 ---------------------------------------------------------------
 -- Movement
@@ -174,6 +164,3 @@ function Nudge:MODIFIER_STATE_CHANGED()
 	end
 	self:Reset()
 end
-
-Nudge.PLAYER_REGEN_DISABLED = Nudge.Hide;
-Nudge.PLAYER_REGEN_ENABLED  = Nudge.Show;

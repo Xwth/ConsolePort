@@ -1,4 +1,5 @@
 local _, Data, env = CPAPI.LinkEnv(...)
+local tinsert = tinsert;
 local MODID_SELECT = { SHIFT = SHIFT_KEY_TEXT, CTRL = CTRL_KEY_TEXT, ALT = ALT_KEY_TEXT, [0] = NONE };
 local DEPENDENCY = { UIenableCursor = true };
 
@@ -130,7 +131,7 @@ ConsolePort:AddVariables({
 ---------------------------------------------------------------
 -- This list aims to contain all the frames, popups, panels
 -- that are not caught by frame managers (e.g. UIPanelWindows),
--- and exist within the FrameXML code in some shape or form. 
+-- and exist within the FrameXML code in some shape or form.
 
 env.StandaloneFrameStack = {
 	'ContainerFrameCombinedBags';
@@ -206,6 +207,12 @@ env.Attributes = {
 	SpecialClick = 'nodespecialclick'; -- Function, special click handler.
 	CancelClick  = 'nodecancelclick';  -- Function, cancel click handler.
 	DisableHooks = 'nohooks';          -- Bool, disable hooks for this node.
+};
+
+env.ModifierPredicates = {
+	SHIFT = IsShiftKeyDown;
+	CTRL  = IsControlKeyDown;
+	ALT   = IsAltKeyDown;
 };
 
 ---------------------------------------------------------------

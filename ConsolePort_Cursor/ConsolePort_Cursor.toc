@@ -16,6 +16,15 @@
 
 Database.lua
 
+Core\CombatGuard.lua
+Core\Settings.lua
+Core\NodeAttribute.lua
+Core\RepeatTimer.lua
+Core\SubController.lua
+
+Compat\Retail.lua
+Compat\Classic.lua
+
 Controller\Stack.lua
 Controller\Hooks.lua
 Controller\Mods.lua
@@ -25,3 +34,4 @@ Controller\Scroll.lua
 View\Cursor.xml
 
 Controller\Nudge.lua
+Controller\MenuNavigator.lua

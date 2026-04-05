@@ -15,10 +15,10 @@ do  local popups, visible, oldNode = {}, {};
 	end
 
 	for popup, previous in pairs(popups) do
-		popup:SetAttribute(env.Attributes.PassThrough, true)
+		env.NodeAttr.SetPassThrough(popup, true)
 		popup:HookScript('OnShow', function(self)
 			visible[self] = true;
-			if not InCombatLockdown() then
+			if not env.CombatGuard:IsLocked() then
 				local prio = popups[previous];
 				if not prio or ( not prio:IsVisible() ) then
 					local current = env.Cursor:GetCurrentNode()
@@ -36,7 +36,7 @@ do  local popups, visible, oldNode = {}, {};
 		end)
 		popup:HookScript('OnHide', function(self)
 			visible[self] = nil;
-			if not next(visible) and not InCombatLockdown() and oldNode then
+			if not next(visible) and not env.CombatGuard:IsLocked() and oldNode then
 				env.Cursor:SetCurrentNodeIfActive(oldNode)
 				oldNode = nil;
 			end
@@ -49,12 +49,12 @@ end
 -- Disable automatic cursor scrolling.
 if MapCanvasScrollControllerMixin then
 	hooksecurefunc(MapCanvasScrollControllerMixin, 'OnLoad', function(self)
-		self:SetAttribute(env.Attributes.IgnoreScroll, true)
+		env.NodeAttr.SetIgnoreScroll(self, true)
 	end)
 end
 
 if (WorldMapFrame and WorldMapFrame.ScrollContainer) then
-	WorldMapFrame.ScrollContainer:SetAttribute(env.Attributes.IgnoreScroll, true)
+	env.NodeAttr.SetIgnoreScroll(WorldMapFrame.ScrollContainer, true)
 end
 
 -- Group loot frames:
@@ -64,7 +64,7 @@ do local NUM_GROUP_LOOT_FRAMES = NUM_GROUP_LOOT_FRAMES or 4;
 		local frame = _G['GroupLootFrame'..i];
 		local iconFrame = frame and frame.IconFrame;
 		if iconFrame then
-			iconFrame:SetAttribute(env.Attributes.Priority, 1)
+			env.NodeAttr.SetPriority(iconFrame, 1)
 		end
 	end
 end
@@ -76,7 +76,7 @@ for _, frame in ipairs({
 	QuestFrameCompleteQuestButton,
 }) do
 	if frame then
-		frame:SetAttribute(env.Attributes.Priority, 1)
+		env.NodeAttr.SetPriority(frame, 1)
 	end
 end
 
@@ -94,7 +94,7 @@ end
 -- and other standard frame elements.
 _('Blizzard_PVPMatch', function()
 	if (PVPMatchResults and PVPMatchResults.content and PVPMatchResults.content.scrollBox) then
-		PVPMatchResults.content.scrollBox:SetAttribute(env.Attributes.IgnoreNode, true)
+		env.NodeAttr.SetIgnored(PVPMatchResults.content.scrollBox, true)
 	end
 end)
 
@@ -111,7 +111,7 @@ _('Blizzard_HelpPlate', function()
 		db.Stack:AddFrame(HelpPlateCanvas)
 		HelpPlateCanvas:HookScript('OnShow', function(self)
 			for _, child in ipairs({self:GetChildren()}) do
-				child:SetAttribute(env.Attributes.PassThrough, true)
+				env.NodeAttr.SetPassThrough(child, true)
 			end
 		end)
 	end
@@ -153,6 +153,6 @@ end
 _('Blizzard_HouseEditor', function()
 	db.Stack:AddFrame(HouseEditorFrame)
 	if GeneralDockManager then
-		GeneralDockManager:SetAttribute(env.Attributes.IgnoreNode, true)
+		env.NodeAttr.SetIgnored(GeneralDockManager, true)
 	end
 end)
